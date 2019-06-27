@@ -34,6 +34,7 @@ FS_results.sort_values(by='IS stat', ascending=False).to_csv('FS_table.csv', ind
 
 N_keep = len(names_IS)
 print(N_keep)
+FS_results.shape
 
 venn3([set(names_NN[:N_keep]), set(names_RF[:N_keep]), set(names_IS[:N_keep])],
     ('Neural Network', 'Random Forest', 'Indicator Species'))
