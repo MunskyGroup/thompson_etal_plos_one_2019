@@ -17,12 +17,23 @@ targets = pd.read_csv('DOC_targets.csv')
 # create a df with results
 results_df = pd.DataFrame()
 
-# instantiate model class
-model = Model('Neural Network', train_data, test_data, targets)
+taxa = pd.read_csv('selected_taxa.csv')['Taxa'].values
 
-Rvals_NN, Rstd_NN, cuts, NS = model.sensitivity(tune=True)
+train_data_FS = train_data[taxa]
+train_data_FS.insert(0, 'Sample ID', train_data[train_data.columns[0]])
+
+test_data_FS = test_data[taxa]
+test_data_FS.insert(0, 'Sample ID', test_data[test_data.columns[0]])
+
+#%%
 
 # instantiate model class
+model = Model('Neural Network', train_data_FS, test_data_FS, targets)
+
+Rvals_NN, Rstd_NN, cuts, NS = model.sensitivity(tune=False, plot=True)
+
+#%% instantiate model class
+
 model = Model('Random Forest', train_data, test_data, targets)
 
 Rvals_RF, Rstd_RF, cuts, NS = model.sensitivity(tune=True)

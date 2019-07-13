@@ -47,7 +47,7 @@ class QuadraticCost(object):
 #### Main Network class
 class Network(object):
 
-    def __init__(self, NF, nodes=10, eta=.5, lmbda=.5, patience=10, verbose=False):
+    def __init__(self, NF, nodes=5, eta=.05, lmbda=.5, patience=10, verbose=False):
         """The list ``sizes`` contains the number of neurons in the respective
         layers of the network.  For example, if the list was [2, 3, 1]
         then it would be a three-layer network, with the first layer
@@ -123,7 +123,7 @@ class Network(object):
         monitor_training_cost=True
 
         NS, NF = X.shape
-        validation_split=0.15
+        validation_split=0.10
         NS_val = int(validation_split*NS)
         training_inputs = [np.reshape(x, (NF, 1)) for x in X]
         training_results = [y for y in Y]
@@ -133,7 +133,7 @@ class Network(object):
         if NS_val > 0:
             evaluation_data = training_data[:NS_val]
         else:
-            evaluation_data is None
+            evaluation_data = None
         training_data = training_data[NS_val:]
 
         if tune:
@@ -144,7 +144,7 @@ class Network(object):
     def SGD(self, training_data, evaluation_data, monitor_training_cost=True):
 
         epochs=200
-        mini_batch_size=10
+        mini_batch_size=3
         eta = self.eta
         lmbda = self.lmbda
         patience = self.patience
@@ -299,7 +299,7 @@ class Network(object):
 
     def backprop_output(self, x, y):
         """Return a tuple ``(nabla_b, nabla_w)`` representing the
-        gradient for the cost function C_x.  ``nabla_b`` and
+        gradient for the model output  ``nabla_b`` and
         ``nabla_w`` are layer-by-layer lists of numpy arrays, similar
         to ``self.biases`` and ``self.weights``."""
         nabla_b = [np.zeros(b.shape) for b in self.biases]

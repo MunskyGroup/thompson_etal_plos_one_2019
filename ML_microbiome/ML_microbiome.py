@@ -345,7 +345,7 @@ class RandomForest:
         # perform feature ranking with subsets of training data
 
         # define percentage of training data to keep when bootstrapping
-        p_bootstrap = .75
+        p_bootstrap = .8
         NS, NF = X_train.shape
 
         if keep == 'all':
@@ -445,7 +445,7 @@ class NeuralNetwork:
         # perform feature ranking with subsets of training data
 
         # define percentage of training data to keep when bootstrapping
-        p_bootstrap = .75
+        p_bootstrap = .8
         NS, NF = X_train.shape
 
         if keep == 'all':
@@ -656,18 +656,24 @@ class FeatureSelection:
         # create Indicator Species object
         IS = IndicatorSpecies(self.train_data, self.targets)
         IS_results = IS.run(sort_by='Stat')
+        self.IS_results = IS_results
 
         # RF feature selection
         model = Model('Random Forest', self.train_data, self.test_data, self.targets, self.test_targets)
         train_data_RF, test_data_RF, names_RF, importances_RF = model.feature_selection(iterations=100)
+        print(len(names_RF))
         # scale RF importances
         importances_RF /= np.max(importances_RF)
+        self.names_RF = np.copy(names_RF)
+        self.importances_RF = importances_RF
 
         # NN feature selection
         model = Model('Neural Network', self.train_data, self.test_data, self.targets, self.test_targets)
         train_data_NN, test_data, names_NN, importances_NN = model.feature_selection(iterations=100)
         # scale NN importances
         importances_NN /= np.max(np.abs(importances_NN))
+        self.names_NN = np.copy(names_NN)
+        self.importances_NN = importances_NN
 
         rf_fs_dict = {name:importance for name, importance in zip(names_RF, importances_RF)}
         nn_fs_dict = {name:importance for name, importance in zip(names_NN, importances_NN)}
@@ -706,11 +712,190 @@ class FeatureSelection:
 
         # sort results by IS stat
         results = results.sort_values(by='IS stat', ascending=False)
+        self.results = results
 
         if return_names:
             return results, names_IS, names_RF, names_NN
         else:
             return results
+
+    def plot(self, shared_OTUs, min_ftrs, max_ftrs, bin_size, tune):
+
+        shared_OTUs = shared_OTUs[min_ftrs:max_ftrs]
+        print("Calculating test performance...")
+        r_vals_NN, r_vals_RF, N_features = self.get_r_vals(shared_OTUs, tune)
+        N_ftrs_axis, _ = self.bin_samples(np.arange(min_ftrs, min_ftrs+len(shared_OTUs)), bin_size)
+        mean_r_vals_NN, std_r_vals_NN = self.bin_samples(r_vals_NN, bin_size)
+        mean_r_vals_RF, std_r_vals_RF = self.bin_samples(r_vals_RF, bin_size)
+
+        plt.figure(figsize=(8, 5))
+        plt.errorbar(N_ftrs_axis, mean_r_vals_RF, capsize=3, markersize=4, alpha=0.75, linestyle='none', marker='D', yerr = std_r_vals_RF, label="Random Forest")
+        plt.errorbar(N_ftrs_axis, mean_r_vals_NN, capsize=3, markersize=4, alpha=0.75, linestyle='none', marker='D', yerr = std_r_vals_NN, label="Neural Network")
+        #plt.axvline(x=len(joint_OTUs)
+        plt.xlabel('Number of Features')
+        plt.xticks(N_ftrs_axis)
+        plt.ylabel('Prediction Performance')
+        plt.legend(loc=4)
+        plt.ylim([0, 1])
+        #plt.savefig('figures/FS/PerformanceVsFeatures_Red.png', dpi=100)
+        plt.show()
+
+    def CompareFeatureSelection(self, model, compare_method, FS_table=None, min_ftrs=5, max_ftrs=100, bin_size=5, tune=False, fname=None):
+        # first determine prediction performance using FS from the joint set
+        if FS_table is not None:
+            joint_OTUs = FS_table.iloc[:, 0].values[min_ftrs:max_ftrs+1]
+        else:
+            FS_table = self.FeatureSelectionTable()
+            joint_OTUs = FS_table.iloc[:, 0].values[min_ftrs:max_ftrs+1]
+
+        r_vals, N_features = self.get_r_vals_model(model, joint_OTUs, tune)
+        N_ftrs_axis, _ = self.bin_samples(np.arange(min_ftrs, min_ftrs+len(joint_OTUs)), bin_size)
+        mean_r_vals, std_r_vals = self.bin_samples(r_vals, bin_size)
+
+        try:
+            if compare_method == 'Random Forest':
+                method_OTUs = self.names_RF[min_ftrs:max_ftrs+1]
+            if compare_method == 'Neural Network':
+                method_OTUs = self.names_NN[min_ftrs:max_ftrs+1]
+        except:
+            FSmodel = Model(compare_method, self.train_data, self.test_data, self.targets, self.test_targets)
+            train_data_FS, test_data_FS, names, importances = FSmodel.feature_selection(iterations=100)
+            method_OTUs = names[min_ftrs:max_ftrs]
+
+        r_vals_method, N_features = self.get_r_vals_model(model, method_OTUs, tune)
+        N_ftrs_axis_method, _ = self.bin_samples(np.arange(min_ftrs, min_ftrs+len(method_OTUs)), bin_size)
+        mean_r_vals_method, std_r_vals_method = self.bin_samples(r_vals_method, bin_size)
+
+        plt.figure(figsize=(8, 5))
+        plt.errorbar(N_ftrs_axis, mean_r_vals, capsize=3, markersize=4, alpha=0.75, linestyle='none', marker='D', yerr = std_r_vals, label="Consensus features")
+        plt.errorbar(N_ftrs_axis_method, mean_r_vals_method, capsize=3, markersize=4, alpha=0.75, linestyle='none', marker='D', yerr = std_r_vals_method, label="{} features".format(compare_method))
+        #plt.axvline(x=len(joint_OTUs)
+        plt.xlabel('Number of Features')
+        #plt.xticks(N_ftrs_axis)
+        plt.ylabel('Prediction Performance')
+        plt.legend(loc=4)
+        plt.ylim([0, 1])
+        plt.title("{} prediction performance".format(model))
+        if fname: plt.savefig(fname, dpi=300)
+        plt.show()
+
+    def FeatureSelectionScore(self, FS_table=None, method='Consensus', min_ftrs=5, max_ftrs=100, bin_size=5, tune=False):
+        ''' function to plot the model performance on test data using feature
+        selection results specified by a given method '''
+        if method == 'Consensus':
+            try:
+                if FS_table is not None:
+                    shared_OTUs = FS_table.iloc[:, 0].values
+                else:
+                    shared_OTUs = self.results.iloc[:, 0].values
+            except:
+                print("Running feature selection...")
+                FS_results = self.FeatureSelectionTable()
+                shared_OTUs = FS_results.iloc[:, 0].values
+        if method == 'Indicator Species':
+            try:
+                IS_p_values_all = self.IS_results['P value'].values
+                shared_OTUs = self.IS_results['OTUs'].values[IS_p_values_all<=.05]
+            except:
+                IS = IndicatorSpecies(self.train_data, self.targets)
+                self.IS_results = IS.run(sort_by='Stat')
+                IS_p_values_all = self.IS_results['P value'].values
+                shared_OTUs = self.IS_results['OTUs'].values[IS_p_values_all<=.05]
+        if method == 'Random Forest':
+            try:
+                shared_OTUs = self.names_RF
+            except:
+                model = Model(method, self.train_data, self.test_data, self.targets, self.test_targets)
+                train_data_FS, test_data_FS, names, importances = model.feature_selection(iterations=100)
+                shared_OTUs = names
+        if method == 'Neural Network':
+            try:
+                shared_OTUs = self.names_NN
+            except:
+                model = Model(method, self.train_data, self.test_data, self.targets, self.test_targets)
+                train_data_FS, test_data_FS, names, importances = model.feature_selection(iterations=100)
+                shared_OTUs = names
+        self.plot(shared_OTUs, min_ftrs, max_ftrs, bin_size, tune)
+
+    def bin_samples(self, samples, bin_size):
+        # define function to bin sets of n samples and return array with avg, std dev
+        n = bin_size
+        avgs = []
+        stds = []
+        set = []
+        for i, sample in zip(range(1, len(samples)+1), samples):
+            set.append(sample)
+            if i%n == 0:
+                avgs.append(np.mean(set))
+                stds.append(np.std(set))
+                set = []
+        return np.array(avgs), np.array(stds)
+
+    def get_r_vals(self, shared_OTUs, tune):
+        # define function to get r values based on the list of OTUs
+        # create model and make predictions with reduced feature set
+        r_vals_RF = []
+        r_vals_NN = []
+        N_features = np.arange(len(shared_OTUs))
+
+        for NF in N_features:
+            NF = int(np.ceil(NF))
+            #print("Testing with {} features".format(NF))
+            train_data_FS = self.train_data[shared_OTUs[:NF+1]]
+            train_data_FS.insert(0, 'Sample ID', self.train_data[self.train_data.columns[0]])
+
+            test_data_FS = self.test_data[shared_OTUs[:NF+1]]
+            test_data_FS.insert(0, 'Sample ID', self.test_data[self.test_data.columns[0]])
+
+            # instantiate model class
+            model = Model('Neural Network', train_data_FS, test_data_FS, self.targets, self.test_targets)
+            if tune: model.tune_hyper_params()
+            # train model
+            model.train_model()
+            # test model
+            y_test, y_pred_test, r = model.test_model(plot=False)
+            # save r values over range of number of selected features
+            r_vals_NN.append(r)
+
+            # instantiate model class
+            model = Model('Random Forest', train_data_FS, test_data_FS, self.targets, self.test_targets)
+            if tune: model.tune_hyper_params()
+            # train model
+            model.train_model()
+            # test model
+            y_test, y_pred_test, r = model.test_model(plot=False)
+            # save r values over range of number of selected features
+            r_vals_RF.append(r)
+
+        return r_vals_NN, r_vals_RF, N_features
+
+    def get_r_vals_model(self, model_name, shared_OTUs, tune):
+        # define function to get r values based on the list of OTUs
+        # create model and make predictions with reduced feature set
+        r_vals = []
+        N_features = np.arange(len(shared_OTUs))
+
+        for NF in N_features:
+            NF = int(np.ceil(NF))
+            #print("Testing with {} features".format(NF))
+            train_data_FS = self.train_data[shared_OTUs[:NF+1]]
+            train_data_FS.insert(0, 'Sample ID', self.train_data[self.train_data.columns[0]])
+
+            test_data_FS = self.test_data[shared_OTUs[:NF+1]]
+            test_data_FS.insert(0, 'Sample ID', self.test_data[self.test_data.columns[0]])
+
+            # instantiate model class
+            model = Model(model_name, train_data_FS, test_data_FS, self.targets, self.test_targets)
+            if tune: model.tune_hyper_params()
+            # train model
+            model.train_model()
+            # test model
+            y_test, y_pred_test, r = model.test_model(plot=False)
+            # save r values over range of number of selected features
+            r_vals.append(r)
+
+        return r_vals, N_features
+
 
 if __name__ == "__main__":
      # Example code to run program goes here:
