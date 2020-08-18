@@ -665,7 +665,7 @@ class FeatureSelection:
         # scale RF importances
         importances_RF /= np.max(importances_RF)
         self.names_RF = np.copy(names_RF)
-        self.importances_RF = importances_RF
+        self.importances_RF = np.copy(importances_RF)
 
         # NN feature selection
         model = Model('Neural Network', self.train_data, self.test_data, self.targets, self.test_targets)
@@ -673,7 +673,7 @@ class FeatureSelection:
         # scale NN importances
         importances_NN /= np.max(np.abs(importances_NN))
         self.names_NN = np.copy(names_NN)
-        self.importances_NN = importances_NN
+        self.importances_NN = np.copy(importances_NN)
 
         rf_fs_dict = {name:importance for name, importance in zip(names_RF, importances_RF)}
         nn_fs_dict = {name:importance for name, importance in zip(names_NN, importances_NN)}
