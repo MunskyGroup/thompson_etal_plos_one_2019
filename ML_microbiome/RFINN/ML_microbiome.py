@@ -627,7 +627,10 @@ class IndicatorSpecies:
 
 class FeatureSelection:
 
-    def __init__(self, train_data, test_data, targets, test_targets=None):
+    def __init__(self, train_data, test_data, targets, test_targets=None, rep_seqs=None):
+
+        # include support for representative sequences information
+        self.rep_seqs = rep_seqs
 
         if test_targets is None:
             test_targets = targets
@@ -637,7 +640,7 @@ class FeatureSelection:
         self.targets = targets
         self.test_targets = test_targets
 
-    def FeatureSelectionTable(self, return_names=False):
+    def FeatureSelectionTable(self, return_names=False, iterations=100):
         # method to perform FS from each method and generate table with results
 
         # create Indicator Species object
@@ -647,7 +650,7 @@ class FeatureSelection:
 
         # RF feature selection
         model = Model('Random Forest', self.train_data, self.test_data, self.targets, self.test_targets)
-        train_data_RF, test_data_RF, names_RF, importances_RF = model.feature_selection(iterations=100)
+        train_data_RF, test_data_RF, names_RF, importances_RF = model.feature_selection(iterations=iterations)
         print(len(names_RF))
         # scale RF importances
         importances_RF /= np.max(importances_RF)
@@ -656,7 +659,7 @@ class FeatureSelection:
 
         # NN feature selection
         model = Model('Neural Network', self.train_data, self.test_data, self.targets, self.test_targets)
-        train_data_NN, test_data, names_NN, importances_NN = model.feature_selection(iterations=100)
+        train_data_NN, test_data, names_NN, importances_NN = model.feature_selection(iterations=iterations)
         # scale NN importances
         importances_NN /= np.max(np.abs(importances_NN))
         self.names_NN = np.copy(names_NN)
@@ -684,7 +687,7 @@ class FeatureSelection:
 
         # save results to Pandas dataframe
         results = pd.DataFrame()
-        results['OTUs'] = otus
+        results['Taxa'] = otus
 
         rf_importance = [rf_fs_dict[otu] for otu in otus]
         results['RF Importance'] = rf_importance
@@ -696,6 +699,29 @@ class FeatureSelection:
         results['IS Site Label'] = IS_site_label
         p_values = [IS_p_value_dict[otu] for otu in otus]
         results['IS P value'] = p_values
+
+        # include rep_seqs info
+        if self.rep_seqs is not None:
+
+            # OTU names should be in first column
+            rep_seq_otus = self.rep_seqs.values[:, 0]
+            # Rep sequences should be in second column
+            seqs = self.rep_seqs.values[:, 1]
+            # make dictionary mapping otu to rep_seq
+            rep_seq_dict = {otu:seq for otu,seq in zip(rep_seq_otus, seqs)}
+
+            # get rep_seqs of selected taxa
+            rep_seqs_selected = []
+            # loop over RFINN selected taxa
+            for otu in otus:
+                # make sure that rep_seq info exists for taxa
+                if otu in rep_seq_otus:
+                    rep_seqs_selected.append(rep_seq_dict[otu])
+                else:
+                    rep_seqs_selected.append("N/A")
+
+            # add rep_seq info to results table
+            results["Rep. Sequences"] = rep_seqs_selected
 
         # sort results by IS stat
         results = results.sort_values(by='IS stat', ascending=False)
