@@ -2,11 +2,10 @@ import pandas as pd
 import numpy as np
 from scipy.stats import linregress, norm
 import matplotlib.pyplot as plt
-# import ML_microbiome package
-import importlib
-import ML_microbiome
-#importlib.reload(ML_microbiome)
-from ML_microbiome import Model, IndicatorSpecies, FeatureSelection
+
+# import RFINN 
+from RFINN import *
+
 # import plotting libraries
 import matplotlib.pyplot as plt
 import matplotlib_venn

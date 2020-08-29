@@ -1,34 +1,48 @@
 import numpy as np
 import pandas as pd
 import scipy
+import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
+
+# import statistics packages
 from scipy import stats
 from scipy.stats import randint as sp_randint
 from scipy.stats import uniform as sp_uniform
 from scipy.stats import norm as sp_norm
-import matplotlib.pyplot as plt
-from joblib import Parallel, delayed
-# import data manager
-import dataManager
-from dataManager import *
+
+# import sklearn packages
 from sklearn.decomposition import PCA
-# import ML packages
-# RF
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-# NN
-import importlib
-import network
-importlib.reload(network)
-from network import Network
-# BLR
-from LR import BLR
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import RandomizedSearchCV
+
+# import neural network class
+from .network import Network
+
+# import Bayesian linear regression
+from .LR import BLR
 
 np.random.seed(123)
 
 class Model:
 
     def __init__(self, model, train_data, test_data, targets, test_targets=None, standardize=True, whiten=False, richness=False):
+
+        # remove unlabeled samples from training and testing data
+        labeled_samples = targets.columns.values[1:]
+        train_samples = train_data.values[:, 0]
+        test_samples = test_data.values[:, 0]
+
+        inds = np.in1d(train_samples, labeled_samples)
+        n_remove = len(train_samples) - np.sum(inds)
+        if n_remove > 0:
+            print("Removing {} unlabeled training samples".format(n_remove))
+            train_data = train_data.iloc[inds, :]
+
+        inds = np.in1d(test_samples, labeled_samples)
+        n_remove = len(test_samples) - np.sum(inds)
+        if n_remove > 0:
+            print("Removing {} unlabeled testing samples".format(n_remove))
+            test_data = test_data.iloc[inds, :]
 
         if richness: # include species abundance
             richness = np.sum(train_data.values[:, 1:] > 0, 1)
@@ -117,12 +131,9 @@ class Model:
         elif model == 'Bayesian Linear Regression':
             self.model = None
             self.model = BayesianLinearRegression(self, self.X_train, self.Y_train)
-        elif model == 'Combined Model':
-            self.model = None
-            self.model = CombinedModel2(self, NF)
 
     def tune_hyper_params(self):
-        # tune hyper parameters using Scikit Learn's grid search algorithm
+        # tune hyper parameters using Scikit Learn's random search algorithm
         # print("Tuning hyper-parameters...")
         return self.model.tune(self.X_train, self.Y_train)
 
@@ -133,27 +144,6 @@ class Model:
     def test_model(self, plot=True):
         # use testing data to test the model
         return self.model.test(self.X_train, self.X_test, self.Y_train, self.Y_test, plot=plot)
-
-    def test_model_uncertainty(self, n=25, plot=True):
-        # pull raw test data
-        X_test = np.array(self.test_data.values[:, 1:], np.float)
-        NS, NF = X_test.shape
-        # create new test data array with shape NS*n, NF
-        X_test_samples = expand(X_test, n)
-        print('done expanding test set')
-        # standardize samples
-        X_test_samples_std = (X_test_samples - self.MNX) / self.STX
-
-        # populate X_test_uncertainty with sampled data
-        Y_pred_train = self.predict(self.X_train)
-        Y_samples = self.predict(X_test_samples_std)
-        # find Y_test and Y_err
-        Y_pred_test, Y_err = np.zeros(NS), np.zeros(NS)
-        for i in range(NS):
-            Y_pred_test[i] = np.mean(Y_samples[i*n:(i+1)*n])
-            Y_err[i] = np.std(Y_samples[i*n:(i+1)*n])
-        self.plot(self.Y_train, Y_pred_train, self.Y_test, Y_pred_test, plot=plot, Yerr=Y_err)
-        return self.Y_test, Y_pred_test, Y_err
 
     def predict(self, X):
         # use the model to make predictions on data set without labels
@@ -296,7 +286,6 @@ class RandomForest:
         try:
             self.RF = RandomForestRegressor(
                 n_estimators=1000,
-                max_features=self.params['max_features'],
                 min_samples_leaf=self.params['min_samples_leaf'],
                 min_samples_split=self.params['min_samples_split'],
                 n_jobs=4)
@@ -327,9 +316,8 @@ class RandomForest:
         param_dist = {"min_samples_split": sp_randint(2, 11),
                       "min_samples_leaf": sp_randint(1, 11)}
 
-        #self.RF.set_params(n_jobs=2)
-        random_search = RandomizedSearchCV(self.RF, n_jobs=4,
-            param_distributions = param_dist, cv=4, iid=False)
+        random_search = RandomizedSearchCV(self.RF, n_jobs=8,
+            param_distributions = param_dist, cv=5, iid=False)
         random_search.fit(X_train, Y_train)
         self.params = random_search.best_params_
         # update RF to match best hyper parameters
@@ -363,7 +351,6 @@ class RandomForest:
             importances = self.RF.feature_importances_
             self.reset()
             return importances
-
         feature_importances = Parallel(n_jobs=4)(delayed(get_importances)() for _ in range(iterations))
 
         # record mean feature importances
@@ -394,7 +381,8 @@ class NeuralNetwork:
             self.net = Network(self.NF,
                 nodes=self.params['nodes'],
                 eta=self.params['eta'],
-                lmbda=self.params['lmbda'])
+                lmbda=self.params['lmbda'],
+                patience=self.params['patience'])
         except:
             self.net = Network(self.NF)
 
@@ -412,7 +400,7 @@ class NeuralNetwork:
         Y_pred_train = self.net.predict(X_train)
 
         m_train, intercept, r_value, p_value, std_err = stats.linregress(Y_train, Y_pred_train)
-        Y_pred_test = self.net.predict(X_test) #/ m_train
+        Y_pred_test = self.net.predict(X_test)
 
         r_value, p_value, std_err  = self.Model_Class.plot(Y_train, Y_pred_train, Y_test, Y_pred_test, plot=plot)
         return Y_test, Y_pred_test, r_value
@@ -431,7 +419,7 @@ class NeuralNetwork:
         self.net.set_params(verbose=False)
         random_search = RandomizedSearchCV(self.net,
             scoring='neg_mean_squared_error',
-            param_distributions = param_dist, cv=10, iid=False, n_jobs=4)
+            param_distributions = param_dist, cv=5, iid=False, n_jobs=8)
         random_search.fit(X_train, Y_train)
         self.params = random_search.best_params_
         self.net = Network(self.NF,
@@ -464,7 +452,6 @@ class NeuralNetwork:
             importances = self.net.feature_importance(X_train_sample, Y_train_sample)
             self.reset()
             return importances
-
         feature_importances = Parallel(n_jobs=4)(delayed(get_importances)() for _ in range(iterations))
 
         # record mean feature importances

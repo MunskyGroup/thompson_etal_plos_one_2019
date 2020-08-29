@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import ttest_ind
 # import ML_microbiome package
-from ML_microbiome import Model, FeatureSelection
+from RFINN import *
 
 # determine filenames of permutations
 train_path = 'train/'

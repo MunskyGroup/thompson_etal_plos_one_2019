@@ -5,11 +5,8 @@ regression models. The script closely follows the Target Prediction Tutorial
 
 # import packages for uploading data
 import pandas as pd
-import numpy as np
-# import ML_microbiome package
-from ML_microbiome import Model, FeatureSelection
-import matplotlib.pyplot as plt
-from scipy.stats import linregress
+# import RFINN
+from RFINN import *
 
 # import training and test data as pandas dataframes
 train_data = pd.read_csv('train_data.csv')

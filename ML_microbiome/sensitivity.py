@@ -3,11 +3,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 11})
-# import ML_microbiome package
-import importlib
-import ML_microbiome
-importlib.reload(ML_microbiome)
-from ML_microbiome import Model
+
+# import RFINN
+from RFINN import *
 
 # import training and test data as pandas dataframes
 train_data = pd.read_csv('train_data.csv')
